@@ -1,1 +1,3 @@
-run cmd: python3 dataGen.py
+```sh
+$python3 dataGen.py
+```
