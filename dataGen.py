@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 
 
 #parameter: 
-#number: the number of generated data we needed
+#number: the number of new data we want to generate
 #method: 1:data Augmentation; 
 #        2:linear / quadratic interpolation
 def simulate_movement(filePath,number,method): 
@@ -80,8 +80,13 @@ def interpolation(df, number):
 if __name__ == "__main__":
 
     file_path = "sample_moveBank.csv"  
-    number_of_points = 10
-    method = 2
+
+    #number: the number of new data we want to generate
+    number_of_points = 10 
+
+    #method: 1:data Augmentation; 
+    #        2:linear / quadratic interpolation
+    method = 2  
     
     result_df = simulate_movement(file_path, number_of_points, method)  
     result_df.to_csv("new_generated_data.csv", index=False)
