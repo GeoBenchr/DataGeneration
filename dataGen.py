@@ -19,6 +19,13 @@ def rename_columns_by_index(df, column_indices):
 
     return df
 
+
+def detect_timestamp_format(timestamp_str):
+    if "T" in timestamp_str:
+        return "%Y-%m-%dT%H:%M:%S.%f"  # ISO 8601 format
+    else:
+        return "%Y-%m-%d %H:%M:%S.%f"  # SQL standard format
+    
 #parameter: 
 #number: the number of new data we want to generate
 #method: 1:data Augmentation; 
@@ -29,23 +36,26 @@ def simulate_movement(filePath,number,method,column_indices=None,has_header=True
     if not has_header and not column_indices:
         raise ValueError("there is no header in input file, please provide parameter: column_indices")
     
+    #("col name after read CSV:", list(df.columns))
+    
     if column_indices:
         df = rename_columns_by_index(df, column_indices)
 
-        
-    df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d %H:%M:%S.%f')  
+    original_time_format = detect_timestamp_format(df['timestamp'].iloc[0])
 
     if method == 1:
         df_new = data_augmentation(df, number)
     elif method == 2:
-        df_new = interpolation(df, number)
+        df_new = interpolation(df, number,original_time_format)
     else:
         raise ValueError("Method should be 1 (Data Augmentation) or 2 (Interpolation)")
-    
+       
     return df_new
 
 def data_augmentation(df, number):
     df_aug = df.copy()
+    
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='raise')
 
     for _ in range(number):
         df_temp = df.sample(n=1, replace=True).copy() 
@@ -57,9 +67,13 @@ def data_augmentation(df, number):
     return df_aug
 
 
-def interpolation(df, number):
+def interpolation(df, number,original_time_format):
     
     df_interpolated = df.copy()
+
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='raise')
+
+    df = df.sort_values(by=['timestamp'])
 
     num_individuals = len(df['individual_id'].unique())  
     base_points = number // num_individuals 
@@ -67,8 +81,19 @@ def interpolation(df, number):
 
     for idx, id in enumerate(df['individual_id'].unique()):#group by individual_id
         subset = df[df['individual_id'] == id]
-        
-        timestamps = subset['timestamp'].astype('int64')  # convert timestamp data to int for calculation
+
+        duplicate_timestamps = subset[subset.duplicated(subset=['timestamp'], keep=False)]
+        # if not duplicate_timestamps.empty:
+        #     print(f"\n: find `individual_id={id}` has duplicatee timestamp:")
+        #     print(duplicate_timestamps)
+
+        #deduplicate
+        subset = subset.drop_duplicates(subset=['timestamp'])
+
+        #delete NaT
+        subset = subset.dropna(subset=['timestamp'])
+
+        timestamps = subset['timestamp'].astype(int)  # convert timestamp data to int for calculation
         latitudes = subset['location_lat'].values
         longitudes = subset['location_long'].values
 
@@ -87,7 +112,7 @@ def interpolation(df, number):
         
         # create new DataFrame
         new_subset = pd.DataFrame({
-            'timestamp': pd.Series(pd.to_datetime(new_timestamps, unit='ns')).dt.strftime('%Y-%m-%d %H:%M:%S.%f'),
+            'timestamp': pd.Series(pd.to_datetime(new_timestamps, unit='ns')).dt.strftime(original_time_format),
             'location_lat': new_latitudes,
             'location_long': new_longitudes,
             'individual_id': id
@@ -102,10 +127,12 @@ def interpolation(df, number):
 
 
 def run():
-    file_path = "sample_moveBank.csv"  
+    #file_path = "sample_moveBank.csv"  
+    file_path = "geomesa_merged00.csv"
+    #file_path = "test.csv"
 
     #number: the number of new data we want to generate
-    number_of_points = 10 
+    number_of_points = 300000
 
     #method: 1:data Augmentation; 
     #        2:linear / quadratic interpolation
@@ -120,16 +147,23 @@ def run():
         'individual_id': 3 
     }
 
+    column_indices2 = {
+        'timestamp': 7,   
+        'location_lat': 2,  
+        'location_long': 3, 
+        'individual_id': 0
+    }
+
     has_header = False 
     
     #default function call, column_indices=None
     #result_df = simulate_movement(file_path, number_of_points, method)   
 
     #use below function when the input data does not have the standard column names and need to change
-    #result_df = simulate_movement(file_path, number_of_points, method,column_indices)  
+    result_df = simulate_movement(file_path, number_of_points, method,column_indices2)  
 
     #use below function when the input data does not have the standard column names & header
-    result_df = simulate_movement(file_path, number_of_points, method, column_indices, has_header)  
+    #result_df = simulate_movement(file_path, number_of_points, method, column_indices, has_header)  
 
 
     result_df.to_csv("new_generated_data.csv", index=False)
