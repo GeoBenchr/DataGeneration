@@ -4,12 +4,35 @@ from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
 
 
+def rename_columns_by_index(df, column_indices):
+    column_mapping = {df.columns[idx]: standard_name for standard_name, idx in column_indices.items()}
+    df.rename(columns=column_mapping, inplace=True)
+
+    for idx in range(len(df.columns)):
+        if df.columns[idx] not in column_mapping.values():
+            df.rename(columns={df.columns[idx]: f"col_{idx}"}, inplace=True)
+
+    required_columns = ['timestamp', 'location_lat', 'location_long', 'individual_id']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"missing col: {missing_cols}")
+
+    return df
+
 #parameter: 
 #number: the number of new data we want to generate
 #method: 1:data Augmentation; 
 #        2:linear / quadratic interpolation
-def simulate_movement(filePath,number,method): 
-    df = pd.read_csv(filePath)
+def simulate_movement(filePath,number,method,column_indices=None,has_header=True): 
+    df = pd.read_csv(filePath, header=0 if has_header else None)
+
+    if not has_header and not column_indices:
+        raise ValueError("there is no header in input file, please provide parameter: column_indices")
+    
+    if column_indices:
+        df = rename_columns_by_index(df, column_indices)
+
+        
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d %H:%M:%S.%f')  
 
     if method == 1:
@@ -67,18 +90,18 @@ def interpolation(df, number):
             'timestamp': pd.Series(pd.to_datetime(new_timestamps, unit='ns')).dt.strftime('%Y-%m-%d %H:%M:%S.%f'),
             'location_lat': new_latitudes,
             'location_long': new_longitudes,
-            'individual_id': id,
-            'tag_id': subset['tag_id'].iloc[0],
-            'dataset_id': subset['dataset_id'].iloc[0]
+            'individual_id': id
         })
+        for col in subset.columns:
+            if col not in ['timestamp', 'location_lat', 'location_long', 'individual_id']:
+                new_subset[col] = subset[col].iloc[0]
+
         df_interpolated = pd.concat([df_interpolated, new_subset], ignore_index=True)
     
     return df_interpolated
 
 
-
-if __name__ == "__main__":
-
+def run():
     file_path = "sample_moveBank.csv"  
 
     #number: the number of new data we want to generate
@@ -87,9 +110,45 @@ if __name__ == "__main__":
     #method: 1:data Augmentation; 
     #        2:linear / quadratic interpolation
     method = 2  
+
+    #change it when the input data does not have the standard column names as below
+    #the number indicates the index of columns
+    column_indices = {
+        'timestamp': 0,   
+        'location_lat': 1,  
+        'location_long': 2, 
+        'individual_id': 3 
+    }
+
+    has_header = False 
     
-    result_df = simulate_movement(file_path, number_of_points, method)  
+    #default function call, column_indices=None
+    #result_df = simulate_movement(file_path, number_of_points, method)   
+
+    #use below function when the input data does not have the standard column names and need to change
+    #result_df = simulate_movement(file_path, number_of_points, method,column_indices)  
+
+    #use below function when the input data does not have the standard column names & header
+    result_df = simulate_movement(file_path, number_of_points, method, column_indices, has_header)  
+
+
     result_df.to_csv("new_generated_data.csv", index=False)
+
+if __name__ == "__main__":
+    run()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
